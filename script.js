@@ -61,19 +61,15 @@ const toolSVGs = {
 };
 
 let isDrawing = false;
-let isPanning = false;
-let lastX = 0, lastY = 0;
-let panStartX = 0, panStartY = 0;
-let currentTool = 'pencil';
 let currentShape = '';
 let currentArrowDir = 'right';
 let currentLineType = 'solid';
 let currentThickness = 3;
 let currentColor = '#000000';
 let currentZoom = 1;
-let zoomStep = 0.1;
-let minZoom = 0.5, maxZoom = 3;
-let panX = 0, panY = 0;
+let zoomStep = 0.05; // Smaller zoom step for finer control
+let minZoom = 0.1, maxZoom = 5; // Adjusted min/max zoom for more flexibility
+let currentPanX = 0, currentPanY = 0; // Actual pan offsets for rendering
 let shapesArray = [];
 let isCropping = false;
 let cropW = 900, cropH = 600;
@@ -91,6 +87,13 @@ let selectedElement = null;
 let isDraggingElement = false;
 let elementDragStartX = 0, elementDragStartY = 0;
 
+// Touch specific variables
+let touchStartX = 0, touchStartY = 0;
+let initialPanX = 0, initialPanY = 0;
+let isPinching = false;
+let initialZoom = 1; // Declare initialZoom
+let initialPinchDistance = 0;
+
 ctx.lineCap = 'round';
 ctx.lineJoin = 'round';
 ctx.fillStyle = '#ffffff';
@@ -107,7 +110,7 @@ function undo() {
     if (undoStack.length > 1) {
         redoStack.push(undoStack.pop());
         shapesArray = JSON.parse(JSON.stringify(undoStack[undoStack.length - 1]));
-        redrawAll();
+        redrawWithPanAndZoom();
     }
 }
 
@@ -115,7 +118,7 @@ function redo() {
     if (redoStack.length > 0) {
         undoStack.push(redoStack.pop());
         shapesArray = JSON.parse(JSON.stringify(undoStack[undoStack.length - 1]));
-        redrawAll();
+        redrawWithPanAndZoom();
     }
 }
 
@@ -192,7 +195,7 @@ function findElementAtPoint(x, y) {
 
 function selectElement(index) {
     selectedElement = index;
-    redrawAll();
+    redrawWithPanAndZoom();
     if (index >= 0) drawSelectionBox(shapesArray[index]);
 }
 
@@ -227,8 +230,8 @@ function drawSelectionBox(element) {
     
     const padding = 8;
     ctx.strokeStyle = '#3498db';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 3]);
+    ctx.lineWidth = 2 / currentZoom; // Scale line width with zoom
+    ctx.setLineDash([5 / currentZoom, 3 / currentZoom]); // Scale dash pattern
     ctx.strokeRect(minX - padding, minY - padding, (maxX - minX) + padding * 2, (maxY - minY) + padding * 2);
     ctx.setLineDash([]);
 }
@@ -237,7 +240,7 @@ function deleteSelectedElement() {
     if (selectedElement !== null && selectedElement >= 0) {
         shapesArray.splice(selectedElement, 1);
         selectedElement = null;
-        redrawAll();
+        redrawWithPanAndZoom();
         saveToHistory();
     }
 }
@@ -371,28 +374,35 @@ shapeBtns.forEach(btn => {
 });
 
 function updateCanvasCursor() {
-    if (currentTool === 'move') {
-        canvasContainer.style.cursor = 'move';
-        cursorPreview.style.display = 'none';
-    } else if (currentTool === 'select') {
+    // Only show cursor preview for drawing tools when not cropping or selecting/moving
+    if (isCropping || currentTool === 'select' || currentTool === 'fill' || currentTool === 'move' || currentShape !== '') {
         canvasContainer.style.cursor = 'default';
         cursorPreview.style.display = 'none';
-    } else if (currentTool === 'fill') {
-        canvasContainer.style.cursor = 'pointer';
-        cursorPreview.style.display = 'none';
+        if (currentTool === 'move') {
+            canvasContainer.style.cursor = 'grab'; // Use grab for move tool
+        } else if (currentTool === 'fill') {
+            canvasContainer.style.cursor = 'pointer';
+        } else if (currentShape !== '') {
+            canvasContainer.style.cursor = 'crosshair'; // For shapes, still use crosshair
+        }
     } else {
         canvasContainer.style.cursor = 'crosshair';
+        cursorPreview.style.display = 'flex';
     }
 }
 
-function redrawAll() {
+function redrawWithPanAndZoom() {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
+    ctx.save(); // Save the current transformation matrix
+    ctx.translate(currentPanX, currentPanY); // Apply pan
+    ctx.scale(currentZoom, currentZoom); // Apply zoom
+
     shapesArray.forEach(shape => {
         ctx.beginPath();
         ctx.strokeStyle = shape.color;
-        ctx.lineWidth = shape.thickness;
+        ctx.lineWidth = shape.thickness / currentZoom; // Scale thickness inversely with zoom
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.globalAlpha = shape.alpha || 1;
@@ -404,11 +414,11 @@ function redrawAll() {
         else if (shape.type === 'arrow') drawArrow(ctx, shape.x1, shape.y1, shape.x2, shape.y2, shape.arrowDir);
         else if (shape.type === 'line') drawLine(ctx, shape.x1, shape.y1, shape.x2, shape.y2, shape.lineType);
         else if (shape.type === 'freehand' && shape.tool === 'brush') {
-            const offset = shape.thickness * 0.3;
+            const offset = shape.thickness * 0.3 / currentZoom; // Scale offset
             const numStrokes = 3;
             for (let s = 0; s < numStrokes; s++) {
                 ctx.beginPath();
-                ctx.lineWidth = shape.thickness * (0.5 + s * 0.2);
+                ctx.lineWidth = shape.thickness * (0.5 + s * 0.2) / currentZoom;
                 ctx.globalAlpha = (shape.alpha || 1) * (0.5 + s * 0.15);
                 shape.points.forEach(pt => {
                     const ox = (s - 1) * offset * 0.3;
@@ -431,93 +441,25 @@ function redrawAll() {
     }
 }
 
-function redrawWithPan() {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    shapesArray.forEach(shape => {
-        ctx.beginPath();
-        ctx.strokeStyle = shape.color;
-        ctx.lineWidth = shape.thickness;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.globalAlpha = shape.alpha || 1;
-        
-        if (shape.type === 'rectangle') ctx.rect(shape.minX + panX, shape.minY + panY, shape.width, shape.height);
-        else if (shape.type === 'circle') ctx.ellipse(shape.minX + panX + shape.width/2, shape.minY + panY + shape.height/2, shape.width/2, shape.height/2, 0, 0, Math.PI * 2);
-        else if (shape.type === 'square') { const size = Math.min(shape.width, shape.height); ctx.rect(shape.minX + panX, shape.minY + panY, size, size); }
-        else if (shape.type === 'star') drawStar(ctx, shape.minX + panX + shape.width/2, shape.minY + panY + shape.height/2, 5, shape.width/2, shape.height/2);
-        else if (shape.type === 'arrow') drawArrow(ctx, shape.x1 + panX, shape.y1 + panY, shape.x2 + panX, shape.y2 + panY, shape.arrowDir);
-        else if (shape.type === 'line') drawLine(ctx, shape.x1 + panX, shape.y1 + panY, shape.x2 + panX, shape.y2 + panY, shape.lineType);
-        else if (shape.type === 'freehand' && shape.tool === 'brush') {
-            const offset = shape.thickness * 0.3;
-            const numStrokes = 3;
-            for (let s = 0; s < numStrokes; s++) {
-                ctx.beginPath();
-                ctx.lineWidth = shape.thickness * (0.5 + s * 0.2);
-                ctx.globalAlpha = (shape.alpha || 1) * (0.5 + s * 0.15);
-                shape.points.forEach(pt => {
-                    const ox = (s - 1) * offset * 0.3;
-                    const oy = (s - 1) * offset * 0.3;
-                    ctx.moveTo(pt.x1 + panX + ox, pt.y1 + panY + oy);
-                    ctx.lineTo(pt.x2 + panX + ox, pt.y2 + panY + oy);
-                });
-                ctx.stroke();
-            }
-        } else if (shape.type === 'freehand') {
-            shape.points.forEach(pt => { ctx.moveTo(pt.x1 + panX, pt.y1 + panY); ctx.lineTo(pt.x2 + panX, pt.y2 + panY); });
-            ctx.stroke();
-        }
-        if (shape.type !== 'freehand') ctx.stroke();
-        ctx.globalAlpha = 1;
-    });
-}
-
-function applyPanOffset() {
-    if (panX === 0 && panY === 0) return;
-    shapesArray.forEach(shape => {
-        shape.x1 = (shape.x1 || 0) + panX;
-        shape.y1 = (shape.y1 || 0) + panY;
-        shape.x2 = (shape.x2 || 0) + panX;
-        shape.y2 = (shape.y2 || 0) + panY;
-        shape.minX = (shape.minX || 0) + panX;
-        shape.minY = (shape.minY || 0) + panY;
-        if (shape.type === 'freehand' && shape.points) {
-            shape.points.forEach(pt => {
-                pt.x1 += panX;
-                pt.y1 += panY;
-                pt.x2 += panX;
-                pt.y2 += panY;
-            });
-        }
-    });
-    panX = 0;
-    panY = 0;
-    redrawAll();
-    saveToHistory();
-}
-
 zoomIn.addEventListener('click', () => {
     if (currentZoom < maxZoom) {
+        const oldZoom = currentZoom;
         currentZoom = Math.min(maxZoom, currentZoom + zoomStep);
-        canvasContainer.style.transform = `scale(${currentZoom})`;
-        currentTool = 'move';
-        toolBtns.forEach(b => b.classList.remove('active'));
-        shapeBtns.forEach(b => b.classList.remove('active'));
-        canvasContainer.style.cursor = 'move';
-        cursorPreview.style.display = 'none';
+        // Adjust pan to zoom around the center of the canvas
+        currentPanX -= (canvas.width / 2) * (currentZoom - oldZoom);
+        currentPanY -= (canvas.height / 2) * (currentZoom - oldZoom);
+        redrawWithPanAndZoom();
     }
 });
 
 zoomOut.addEventListener('click', () => {
     if (currentZoom > minZoom) {
+        const oldZoom = currentZoom;
         currentZoom = Math.max(minZoom, currentZoom - zoomStep);
-        canvasContainer.style.transform = `scale(${currentZoom})`;
-        currentTool = 'move';
-        toolBtns.forEach(b => b.classList.remove('active'));
-        shapeBtns.forEach(b => b.classList.remove('active'));
-        canvasContainer.style.cursor = 'move';
-        cursorPreview.style.display = 'none';
+        // Adjust pan to zoom around the center of the canvas
+        currentPanX += (canvas.width / 2) * (oldZoom - currentZoom);
+        currentPanY += (canvas.height / 2) * (oldZoom - currentZoom);
+        redrawWithPanAndZoom();
     }
 });
 
@@ -534,15 +476,16 @@ clearBtn.addEventListener('click', () => {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     shapesArray = [];
     selectedElement = null;
-    panX = 0; panY = 0;
+    currentPanX = 0;
+    currentPanY = 0;
     currentZoom = 1;
-    canvasContainer.style.transform = 'scale(1)';
+    redrawWithPanAndZoom(); // Redraw after clearing and resetting zoom/pan
     undoStack = []; redoStack = [];
     saveToHistory();
 });
 
 canvasContainer.addEventListener('mouseenter', () => {
-    if (currentTool !== 'move' && currentTool !== 'select' && currentTool !== 'fill' && currentShape === '' && !isCropping) {
+    if (currentTool !== 'move' && currentTool !== 'select' && currentTool !== 'fill' && currentShape === '' && !isCropping && !isDrawingShape) {
         cursorPreview.style.display = 'flex';
     }
 });
@@ -559,17 +502,25 @@ canvasContainer.addEventListener('mousemove', (e) => {
 });
 
 function getPosition(e) {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const rect = canvas.getBoundingClientRect(); // Visual size of the canvas element
+    
+    // Get clientX/Y from mouse or first touch
+    const clientX = e.clientX || e.touches[0].clientX;
+    const clientY = e.clientY || e.touches[0].clientY;
+
+    // Calculate position relative to the canvas element's visual bounds
+    let x = clientX - rect.left;
+    let y = clientY - rect.top;
+
+    // Convert to internal canvas coordinates, accounting for pan and zoom
     return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY
+        x: (x / currentZoom) - (currentPanX / currentZoom),
+        y: (y / currentZoom) - (currentPanY / currentZoom)
     };
 }
 
 function startDrawing(e) {
-    if (currentTool === 'move' || isCropping || currentTool === '' || currentShape !== '') return;
+    if (currentTool === 'move' || isCropping || currentTool === '' || currentShape !== '' || currentTool === 'select' || currentTool === 'fill') return;
     isDrawing = true;
     const pos = getPosition(e);
     lastX = pos.x;
@@ -577,7 +528,7 @@ function startDrawing(e) {
 }
 
 function draw(e) {
-    if (!isDrawing || isCropping || currentTool === '' || currentShape !== '') return;
+    if (!isDrawing || isCropping || currentTool === '' || currentShape !== '' || currentTool === 'select' || currentTool === 'fill') return;
     e.preventDefault();
     const pos = getPosition(e);
     
@@ -653,8 +604,8 @@ function draw(e) {
     lastY = pos.y;
 }
 
-function stopDrawing() {
-    if (isDrawing) { 
+function stopDrawing(e) {
+    if (isDrawing) {
         saveToHistory();
     }
     isDrawing = false;
@@ -662,8 +613,8 @@ function stopDrawing() {
 }
 
 canvasContainer.addEventListener('mousedown', (e) => {
+    isDrawing = false; // Reset drawing state for all mouse interactions
     if (currentTool === 'move') {
-        isDrawing = false; // Ensure drawing is off
         const pos = getPosition(e);
         const idx = findElementAtPoint(pos.x, pos.y);
         if (idx >= 0) {
@@ -671,7 +622,9 @@ canvasContainer.addEventListener('mousedown', (e) => {
             isDraggingElement = true;
             elementDragStartX = pos.x;
             elementDragStartY = pos.y;
-            redrawAll();
+            canvasContainer.style.cursor = 'grabbing';
+            redrawWithPanAndZoom(); // Redraw to show selection if any
+
         } else if (selectedElement !== null) {
             isDraggingElement = true; elementDragStartX = pos.x; elementDragStartY = pos.y;
         }
@@ -682,21 +635,21 @@ canvasContainer.addEventListener('mousedown', (e) => {
         if (idx >= 0) {
             if (selectedElement !== idx) {
                 selectedElement = idx;
-                redrawAll();
+                redrawWithPanAndZoom(); // Redraw to show new selection
             }
             isDraggingElement = true;
             elementDragStartX = pos.x;
             elementDragStartY = pos.y;
         } else {
             selectedElement = null;
-            redrawAll();
+            redrawWithPanAndZoom();
         }
     } else if (currentTool === 'fill') {
         const pos = getPosition(e);
         const idx = findElementAtPoint(pos.x, pos.y);
         if (idx >= 0) {
             shapesArray[idx].color = currentColor;
-            redrawAll();
+            redrawWithPanAndZoom();
             saveToHistory();
         }
     } else if (currentShape !== '' || currentArrowDir !== '' || currentLineType !== '') {
@@ -705,6 +658,8 @@ canvasContainer.addEventListener('mousedown', (e) => {
         shapeStartY = pos.y;
         isDrawingShape = true;
     }
+    // For drawing tools (pencil, pen, brush, eraser)
+    else if (currentTool !== '' && currentTool !== 'fill' && currentTool !== 'select' && currentTool !== 'move') startDrawing(e);
 });
 
 canvasContainer.addEventListener('mousemove', (e) => {
@@ -715,6 +670,92 @@ canvasContainer.addEventListener('mousemove', (e) => {
         moveElement(selectedElement, dx, dy);
         elementDragStartX = pos.x;
         elementDragStartY = pos.y;
+    } else if (isDrawing && !isCropping && currentTool !== 'select' && currentTool !== 'move' && currentTool !== 'fill') { // Freehand drawing
+        draw(e);
+    } else if (isDrawingShape) {
+        const pos = getPosition(e);
+        redrawWithPanAndZoom(); // Clear canvas
+        drawShapePreview(shapeStartX, shapeStartY, pos.x, pos.y);
+    }
+});
+
+canvasContainer.addEventListener('touchstart', (e) => {
+    e.preventDefault(); // Prevent default browser touch behavior (like scrolling, zooming)
+    if (e.touches.length === 2) {
+        isPinching = true;
+        initialPinchDistance = getPinchDistance(e);
+        initialZoom = currentZoom;
+    } else if (e.touches.length === 1) {
+        const pos = getPosition(e.touches[0]);
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        initialPanX = currentPanX;
+        initialPanY = currentPanY;
+
+        if (currentTool === 'move') {
+            isDrawing = false; // Not drawing, but preparing for pan
+            isDraggingElement = false; // Reset dragging for touch pan
+            selectedElement = null; // Deselect for touch pan
+        } else if (currentTool === 'select') {
+            isDrawing = false;
+            const idx = findElementAtPoint(pos.x, pos.y);
+            if (idx >= 0) {
+                selectedElement = idx;
+                isDraggingElement = true;
+                elementDragStartX = pos.x;
+                elementDragStartY = pos.y;
+            } else {
+                selectedElement = null;
+            }
+            redrawWithPanAndZoom();
+        } else if (currentTool === 'fill') {
+            isDrawing = false;
+            const idx = findElementAtPoint(pos.x, pos.y);
+            if (idx >= 0) {
+                shapesArray[idx].color = currentColor;
+                redrawWithPanAndZoom();
+                saveToHistory();
+            }
+        } else if (currentShape !== '') {
+            isDrawing = false; // It's a shape drawing, not freehand drawing
+            shapeStartX = pos.x;
+            shapeStartY = pos.y;
+            isDrawingShape = true;
+        } else { // Drawing tools (pencil, pen, brush, eraser)
+            startDrawing(e.touches[0]);
+        }
+    }
+});
+
+canvasContainer.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (isPinching && e.touches.length === 2) {
+        const currentPinchDistance = getPinchDistance(e);
+        const scaleFactor = currentPinchDistance / initialPinchDistance;
+        currentZoom = initialZoom * scaleFactor;
+        currentZoom = Math.max(minZoom, Math.min(maxZoom, currentZoom)); // Clamp zoom
+        redrawWithPanAndZoom();
+    } else if (e.touches.length === 1) {
+        if (currentTool === 'move') {
+            const dx = e.touches[0].clientX - touchStartX;
+            const dy = e.touches[0].clientY - touchStartY;
+            currentPanX = initialPanX + dx;
+            currentPanY = initialPanY + dy;
+            redrawWithPanAndZoom();
+        } else if (isDrawing && !isCropping && currentTool !== 'select' && currentTool !== 'move' && currentTool !== 'fill') { // Freehand drawing
+            draw(e.touches[0]);
+        } else if (isDraggingElement && selectedElement !== null) {
+            const pos = getPosition(e.touches[0]);
+            const dx = pos.x - elementDragStartX;
+            const dy = pos.y - elementDragStartY;
+            moveElement(selectedElement, dx, dy);
+            elementDragStartX = pos.x;
+            elementDragStartY = pos.y;
+        } else if (isDrawingShape) {
+            const pos = getPosition(e.touches[0]);
+            redrawWithPanAndZoom(); // Clear canvas
+            drawShapePreview(shapeStartX, shapeStartY, pos.x, pos.y);
+        }
     }
 });
 
@@ -725,64 +766,40 @@ canvasContainer.addEventListener('mouseup', (e) => {
         isDrawingShape = false;
         saveToHistory();
     }
-    if (isPanning && currentTool === 'move') {
-        shapesArray.forEach(shape => {
-            shape.x1 = (shape.x1 || 0) + panX;
-            shape.y1 = (shape.y1 || 0) + panY;
-            shape.x2 = (shape.x2 || 0) + panX;
-            shape.y2 = (shape.y2 || 0) + panY;
-            shape.minX = (shape.minX || 0) + panX;
-            shape.minY = (shape.minY || 0) + panY;
-            if (shape.type === 'freehand' && shape.points) {
-                shape.points.forEach(pt => {
-                    pt.x1 += panX;
-                    pt.y1 += panY;
-                    pt.x2 += panX;
-                    pt.y2 += panY;
-                });
-            }
-        });
-        panX = 0;
-        panY = 0;
-        isPanning = false;
-        redrawAll();
+    if (isDraggingElement) {
+        isDraggingElement = false;
+        updateCanvasCursor(); // Reset cursor after dragging
         saveToHistory();
+    }
+    stopDrawing(e); // Call stopDrawing for mouseup
+    updateCanvasCursor();
+});
+
+canvasContainer.addEventListener('touchend', (e) => {
+    isPinching = false;
+    if (isDrawing) {
+        stopDrawing(e);
     }
     if (isDraggingElement) {
         isDraggingElement = false;
+        updateCanvasCursor(); // Reset cursor after dragging
+        saveToHistory();
+    }
+    if (isDrawingShape) {
+        const pos = getPosition(e.changedTouches[0]); // Use changedTouches for touchend
+        drawShapeOnCanvas(shapeStartX, shapeStartY, pos.x, pos.y);
+        isDrawingShape = false;
         saveToHistory();
     }
     updateCanvasCursor();
 });
 
-canvasContainer.addEventListener('mouseleave', () => {
-    if (isPanning && currentTool === 'move') {
-        shapesArray.forEach(shape => {
-            shape.x1 = (shape.x1 || 0) + panX;
-            shape.y1 = (shape.y1 || 0) + panY;
-            shape.x2 = (shape.x2 || 0) + panX;
-            shape.y2 = (shape.y2 || 0) + panY;
-            shape.minX = (shape.minX || 0) + panX;
-            shape.minY = (shape.minY || 0) + panY;
-            if (shape.type === 'freehand' && shape.points) {
-                shape.points.forEach(pt => {
-                    pt.x1 += panX;
-                    pt.y1 += panY;
-                    pt.x2 += panX;
-                    pt.y2 += panY;
-                });
-            }
-        });
-        panX = 0;
-        panY = 0;
-        redrawAll();
-        saveToHistory();
-    }
-    isPanning = false;
+canvasContainer.addEventListener('mouseleave', (e) => {
+    stopDrawing(e); // Call stopDrawing for mouseleave
+    // Do not reset isDraggingElement here, as mouseleave can happen during a drag
     isDraggingElement = false;
-    if (currentTool === 'move') canvasContainer.style.cursor = 'move';
-    if (currentTool === 'select') canvasContainer.style.cursor = 'default';
     if (isDrawingShape) { isDrawingShape = false; }
+    updateCanvasCursor();
 });
 
 function moveElement(index, dx, dy) {
@@ -801,7 +818,7 @@ function moveElement(index, dx, dy) {
             pt.y2 += dy;
         });
     }
-    redrawAll();
+    redrawWithPanAndZoom();
 }
 
 function drawShapeOnCanvas(x1, y1, x2, y2) {
@@ -824,6 +841,23 @@ function drawShapeOnCanvas(x1, y1, x2, y2) {
     };
     shapesArray.push(shapeData);
     
+    redrawWithPanAndZoom(); // Redraw all shapes including the new one
+}
+
+function drawShapePreview(x1, y1, x2, y2) {
+    // This function draws a temporary shape for live preview during touchmove
+    ctx.save();
+    ctx.translate(currentPanX, currentPanY);
+    ctx.scale(currentZoom, currentZoom);
+
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = currentThickness / currentZoom;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const minX = Math.min(x1, x2), minY = Math.min(y1, y2);
+    const width = Math.abs(x2 - x1), height = Math.abs(y2 - y1);
+
     ctx.beginPath();
     if (currentShape === 'rectangle') ctx.rect(minX, minY, width, height);
     else if (currentShape === 'circle') ctx.ellipse(minX + width/2, minY + height/2, width/2, height/2, 0, 0, Math.PI * 2);
@@ -832,6 +866,7 @@ function drawShapeOnCanvas(x1, y1, x2, y2) {
     else if (currentShape === 'arrow') drawArrow(ctx, x1, y1, x2, y2, currentArrowDir);
     else if (currentShape === 'line') drawLine(ctx, x1, y1, x2, y2, currentLineType);
     ctx.stroke();
+    ctx.restore();
 }
 
 function drawStar(ctx, cx, cy, spikes, or, ir) {
@@ -885,56 +920,113 @@ function drawLine(ctx, x1, y1, x2, y2, lt) {
     }
 }
 
-canvas.addEventListener('mousedown', startDrawing);
-canvas.addEventListener('mousemove', draw);
-canvas.addEventListener('mouseup', stopDrawing);
-canvas.addEventListener('mouseleave', stopDrawing);
+// The canvasContainer now handles all mouse events for drawing, selection, move, etc.
+// The individual canvas.addEventListener calls are no longer needed for drawing.
+// canvas.addEventListener('mousedown', startDrawing);
+// canvas.addEventListener('mousemove', draw);
+// canvas.addEventListener('mouseup', stopDrawing);
+// canvas.addEventListener('mouseleave', stopDrawing);
 
 canvasWrapper.addEventListener('wheel', (e) => {
     e.preventDefault();
+    const oldZoom = currentZoom;
     if (e.deltaY < 0 && currentZoom < maxZoom) currentZoom = Math.min(maxZoom, currentZoom + zoomStep);
     else if (e.deltaY > 0 && currentZoom > minZoom) currentZoom = Math.max(minZoom, currentZoom - zoomStep);
-    canvasContainer.style.transform = `scale(${currentZoom})`;
-    currentTool = 'move';
-    toolBtns.forEach(b => b.classList.remove('active'));
-    shapeBtns.forEach(b => b.classList.remove('active'));
-    canvasContainer.style.cursor = 'move';
-    cursorPreview.style.display = 'none';
+
+    // Adjust pan to zoom around the mouse cursor
+    const mouseX = (e.clientX - canvas.getBoundingClientRect().left - currentPanX) / oldZoom;
+    const mouseY = (e.clientY - canvas.getBoundingClientRect().top - currentPanY) / oldZoom;
+    currentPanX -= (mouseX * (currentZoom - oldZoom));
+    currentPanY -= (mouseY * (currentZoom - oldZoom));
+    redrawWithPanAndZoom();
 });
+
+function getPinchDistance(e) {
+    return Math.sqrt(Math.pow(e.touches[1].clientX - e.touches[0].clientX, 2) + Math.pow(e.touches[1].clientY - e.touches[0].clientY, 2));
+}
 
 // Crop
 function initCrop() {
     selectedElement = null;
     canvasRect = canvas.getBoundingClientRect();
-    cropRectX = canvasRect.left; cropRectY = canvasRect.top;
-    cropW = canvasRect.width; cropH = canvasRect.height;
+    
+    // Initialize crop box to cover the entire visible canvas area
+    cropRectX = canvasRect.left + currentPanX * currentZoom;
+    cropRectY = canvasRect.top + currentPanY * currentZoom;
+    cropW = canvas.width * currentZoom;
+    cropH = canvas.height * currentZoom;
+
+    // Clamp initial crop box to canvas container boundaries
+    cropRectX = Math.max(canvasRect.left, cropRectX);
+    cropRectY = Math.max(canvasRect.top, cropRectY);
+    cropW = Math.min(cropW, canvasRect.left + canvasRect.width - cropRectX);
+    cropH = Math.min(cropH, canvasRect.top + canvasRect.height - cropRectY);
+
     cropBox.style.cssText = `left:${cropRectX}px;top:${cropRectY}px;width:${cropW}px;height:${cropH}px;`;
-    cropInfo.textContent = `${Math.round(cropW)} × ${Math.round(cropH)}`;
+    cropInfo.textContent = `${Math.round(cropW / currentZoom)} × ${Math.round(cropH / currentZoom)}`; // Display actual canvas dimensions
     cropOverlay.classList.add('active');
     isCropping = true;
     cursorPreview.style.display = 'none';
 }
 
 function applyCrop() {
-    const sw = Math.min(canvas.width, cropW), sh = Math.min(canvas.height, cropH);
-    if (sw <= 0 || sh <= 0) return;
+    // Get the current CSS properties of the cropBox
+    const cropBoxStyle = window.getComputedStyle(cropBox);
+    const cssCropLeft = parseFloat(cropBoxStyle.left);
+    const cssCropTop = parseFloat(cropBoxStyle.top);
+    const cssCropWidth = parseFloat(cropBoxStyle.width);
+    const cssCropHeight = parseFloat(cropBoxStyle.height);
+
+    // Get the canvas's bounding rectangle to relate CSS positions to canvas
+    const canvasBoundingRect = canvas.getBoundingClientRect();
+
+    // Calculate the crop area in internal canvas coordinates
+    // This involves reversing the pan and zoom transformations
+    const cropCanvasX = (cssCropLeft - canvasBoundingRect.left - currentPanX) / currentZoom;
+    const cropCanvasY = (cssCropTop - canvasBoundingRect.top - currentPanY) / currentZoom;
+    const cropCanvasW = cssCropWidth / currentZoom;
+    const cropCanvasH = cssCropHeight / currentZoom;
+
+    // Ensure crop dimensions are positive and within canvas bounds
+    const sourceX = Math.max(0, cropCanvasX);
+    const sourceY = Math.max(0, cropCanvasY);
+    const sourceWidth = Math.min(canvas.width - sourceX, cropCanvasW);
+    const sourceHeight = Math.min(canvas.height - sourceY, cropCanvasH);
+
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+        console.warn("Invalid crop dimensions.");
+        cancelCrop();
+        return;
+    }
+
     const tc = document.createElement('canvas'), tcx = tc.getContext('2d');
-    tc.width = sw; tc.height = sh;
+
+    tc.width = sourceWidth;
+    tc.height = sourceHeight;
+
     tcx.fillStyle = '#fff'; tcx.fillRect(0, 0, sw, sh);
-    tcx.drawImage(canvas, 0, 0, sw, sh);
-    canvas.width = sw; canvas.height = sh;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, sw, sh);
+    tcx.drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, tc.width, tc.height);
+
+    // Resize the main canvas and draw the cropped image
+    canvas.width = tc.width;
+    canvas.height = tc.height;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(tc, 0, 0);
-    exportWidth.value = Math.round(sw); exportHeight.value = Math.round(sh);
+
+    exportWidth.value = Math.round(canvas.width);
+    exportHeight.value = Math.round(canvas.height);
     cancelCrop();
     shapesArray = [];
     saveToHistory();
+    redrawWithPanAndZoom(); // Redraw with new canvas dimensions
 }
 
 function cancelCrop() {
     cropOverlay.classList.remove('active');
     isCropping = false;
     cropBox.style.cssText = '';
+    redrawWithPanAndZoom(); // Redraw to remove crop overlay
 }
 
 cropCancel.addEventListener('click', cancelCrop);
@@ -949,19 +1041,68 @@ cropBox.addEventListener('mousedown', (e) => {
 document.addEventListener('mousemove', (e) => {
     if (!isCropping) return;
     if (isDragging) {
-        let nx = e.clientX - cropW / 2, ny = e.clientY - cropH / 2;
-        nx = Math.max(canvasRect.left, Math.min(canvasRect.left + canvasRect.width - cropW, nx));
-        ny = Math.max(canvasRect.top, Math.min(canvasRect.top + canvasRect.height - cropH, ny));
-        cropRectX = nx; cropRectY = ny;
-        cropBox.style.left = nx + 'px'; cropBox.style.top = ny + 'px';
+        // Mouse position in screen coordinates
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        // Calculate new crop box position in screen coordinates
+        let newCropRectX = mouseX - cropW / 2;
+        let newCropRectY = mouseY - cropH / 2;
+
+        // Clamp crop box position to canvas container boundaries (screen coordinates)
+        newCropRectX = Math.max(canvasRect.left, Math.min(canvasRect.left + canvasRect.width - cropW, newCropRectX));
+        newCropRectY = Math.max(canvasRect.top, Math.min(canvasRect.top + canvasRect.height - cropH, newCropRectY));
+
+        cropRectX = newCropRectX;
+        cropRectY = newCropRectY;
+
+        cropBox.style.left = cropRectX + 'px';
+        cropBox.style.top = cropRectY + 'px';
     } else if (isResizing) {
         const ms = 50;
-        if (resizeHandle === 'se') { cropW = Math.max(ms, Math.min(e.clientX - cropRectX, canvasRect.left + canvasRect.width - cropRectX)); cropH = Math.max(ms, Math.min(e.clientY - cropRectY, canvasRect.top + canvasRect.height - cropRectY)); }
-        else if (resizeHandle === 'sw') { const nw = cropRectX + cropW - e.clientX; if (nw >= ms && e.clientX >= canvasRect.left) { cropW = nw; cropRectX = e.clientX; } cropH = Math.max(ms, Math.min(e.clientY - cropRectY, canvasRect.top + canvasRect.height - cropRectY)); }
-        else if (resizeHandle === 'ne') { cropW = Math.max(ms, Math.min(e.clientX - cropRectX, canvasRect.left + canvasRect.width - cropRectX)); const nh = cropRectY + cropH - e.clientY; if (nh >= ms && e.clientY >= canvasRect.top) { cropH = nh; cropRectY = e.clientY; } }
-        else if (resizeHandle === 'nw') { const nw = cropRectX + cropW - e.clientX; const nh = cropRectY + cropH - e.clientY; if (nw >= ms && e.clientX >= canvasRect.left) { cropW = nw; cropRectX = e.clientX; } if (nh >= ms && e.clientY >= canvasRect.top) { cropH = nh; cropRectY = e.clientY; } }
+            // Mouse position in screen coordinates
+            const mouseX = e.clientX;
+            const mouseY = e.clientY;
+
+            let newCropW = cropW;
+            let newCropH = cropH;
+            let newCropRectX = cropRectX;
+            let newCropRectY = cropRectY;
+
+            const cropRight = cropRectX + cropW;
+            const cropBottom = cropRectY + cropH;
+
+            if (resizeHandle === 'se') {
+                newCropW = Math.max(ms, mouseX - cropRectX);
+                newCropH = Math.max(ms, mouseY - cropRectY);
+            } else if (resizeHandle === 'sw') {
+                newCropW = Math.max(ms, cropRight - mouseX);
+                newCropRectX = cropRight - newCropW;
+                newCropH = Math.max(ms, mouseY - cropRectY);
+            } else if (resizeHandle === 'ne') {
+                newCropW = Math.max(ms, mouseX - cropRectX);
+                newCropH = Math.max(ms, cropBottom - mouseY);
+                newCropRectY = cropBottom - newCropH;
+            } else if (resizeHandle === 'nw') {
+                newCropW = Math.max(ms, cropRight - mouseX);
+                newCropRectX = cropRight - newCropW;
+                newCropH = Math.max(ms, cropBottom - mouseY);
+                newCropRectY = cropBottom - newCropH;
+            }
+
+            // Clamp to canvas container boundaries (screen coordinates)
+            newCropRectX = Math.max(canvasRect.left, newCropRectX);
+            newCropRectY = Math.max(canvasRect.top, newCropRectY);
+            newCropW = Math.min(newCropW, canvasRect.left + canvasRect.width - newCropRectX);
+            newCropH = Math.min(newCropH, canvasRect.top + canvasRect.height - newCropRectY);
+
+            cropRectX = newCropRectX;
+            cropRectY = newCropRectY;
+            cropW = newCropW;
+            cropH = newCropH;
+
         cropBox.style.cssText = `left:${cropRectX}px;top:${cropRectY}px;width:${cropW}px;height:${cropH}px;`;
-        cropInfo.textContent = `${Math.round(cropW)} × ${Math.round(cropH)}`;
+        cropInfo.textContent = `${Math.round(cropW / currentZoom)} × ${Math.round(cropH / currentZoom)}`; // Display actual canvas dimensions
     }
 });
 
@@ -978,8 +1119,9 @@ document.addEventListener('keydown', (e) => {
 // Download
 downloadBtn.addEventListener('click', () => {
     const fmt = formatSelect.value;
-    const w = parseInt(exportWidth.value) || canvas.width;
-    const h = parseInt(exportHeight.value) || canvas.height;
+    // Use the actual canvas dimensions for export, not the visually scaled ones
+    const w = parseInt(exportWidth.value) || canvas.width; 
+    const h = parseInt(exportHeight.value) || canvas.height; 
     if (fmt === 'svg') {
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><image width="${w}" height="${h}" href="${canvas.toDataURL('image/png')}"/></svg>`;
         const blob = new Blob([svg], { type: 'image/svg+xml' });
@@ -1003,5 +1145,5 @@ downloadBtn.addEventListener('click', () => {
 });
 
 cropBtn.addEventListener('click', initCrop);
-updateCursorIcon();
-updateCanvasCursor();
+updateCursorIcon(); // Initial cursor icon
+redrawWithPanAndZoom(); // Initial draw

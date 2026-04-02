@@ -12,7 +12,8 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 15px;
+    /* padding: 15px; Removed to prevent content cutoff on small screens */
+    overflow-y: auto; /* Allow body to scroll if content overflows */
 }
 
 h1 {
@@ -20,6 +21,7 @@ h1 {
     margin-bottom: 15px;
     font-size: 22px;
     text-align: center;
+    padding-top: 15px; /* Add padding here instead */
 }
 
 .main-container {
@@ -28,6 +30,9 @@ h1 {
     width: 100%;
     max-width: 1200px;
     justify-content: center;
+    flex-grow: 1; /* Allow main content to take available space */
+    padding-left: 15px; /* Add horizontal padding here */
+    padding-right: 15px;
 }
 
 .left-sidebar {
