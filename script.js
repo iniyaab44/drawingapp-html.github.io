@@ -1004,7 +1004,7 @@ function applyCrop() {
     tc.width = sourceWidth;
     tc.height = sourceHeight;
 
-    tcx.fillStyle = '#fff'; tcx.fillRect(0, 0, sw, sh);
+    tcx.fillStyle = '#fff'; tcx.fillRect(0, 0, sourceWidth, sourceHeight);
     tcx.drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, tc.width, tc.height);
 
     // Resize the main canvas and draw the cropped image
