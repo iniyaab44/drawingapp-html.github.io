@@ -73,6 +73,7 @@ let currentPanX = 0, currentPanY = 0; // Actual pan offsets for rendering
 let shapesArray = [];
 let isCropping = false;
 let cropW = 900, cropH = 600;
+let currentStroke = null;
 let isDragging = false, isResizing = false;
 let resizeHandle = '';
 let cropRectX = 0, cropRectY = 0;
@@ -556,18 +557,18 @@ function draw(e) {
         
         ctx.globalAlpha = 1;
         
-        if (shapesArray.length > 0 && shapesArray[shapesArray.length - 1].type === 'freehand' && shapesArray[shapesArray.length - 1].tool === 'brush') {
-            shapesArray[shapesArray.length - 1].points.push({ x1: lastX, y1: lastY, x2: pos.x, y2: pos.y });
-        } else {
-            shapesArray.push({
+        if (!currentStroke) {
+            currentStroke = {
                 type: 'freehand',
                 tool: 'brush',
                 color: currentColor,
                 thickness: currentThickness,
                 alpha: 0.8,
-                points: [{ x1: lastX, y1: lastY, x2: pos.x, y2: pos.y }]
-            });
+                points: []
+            };
+            shapesArray.push(currentStroke);
         }
+        currentStroke.points.push({ x1: lastX, y1: lastY, x2: pos.x, y2: pos.y });
     } else {
         ctx.beginPath();
         ctx.moveTo(lastX, lastY);
@@ -586,18 +587,18 @@ function draw(e) {
         ctx.lineWidth = currentThickness;
         ctx.stroke();
         
-        if (shapesArray.length > 0 && shapesArray[shapesArray.length - 1].type === 'freehand') {
-            shapesArray[shapesArray.length - 1].points.push({ x1: lastX, y1: lastY, x2: pos.x, y2: pos.y });
-        } else {
-            shapesArray.push({
+        if (!currentStroke) {
+            currentStroke = {
                 type: 'freehand',
                 tool: currentTool,
                 color: currentColor,
                 thickness: currentThickness,
                 alpha: currentTool === 'pencil' ? 0.4 : 1,
-                points: [{ x1: lastX, y1: lastY, x2: pos.x, y2: pos.y }]
-            });
+                points: []
+            };
+            shapesArray.push(currentStroke);
         }
+        currentStroke.points.push({ x1: lastX, y1: lastY, x2: pos.x, y2: pos.y });
     }
     
     lastX = pos.x;
@@ -609,6 +610,7 @@ function stopDrawing(e) {
         saveToHistory();
     }
     isDrawing = false;
+    currentStroke = null;
     ctx.globalAlpha = 1;
 }
 
