@@ -520,7 +520,7 @@ function getPosition(e) {
 }
 
 function startDrawing(e) {
-    if (currentTool === 'move' || isCropping || currentTool === '' || currentShape !== '' || currentTool === 'select' || currentTool === 'fill') return;
+    if (currentTool === 'move' || isCropping || currentTool === '' || currentShape !== '' || currentTool === 'select' || currentTool === 'fill' || isDraggingElement) return;
     isDrawing = true;
     const pos = getPosition(e);
     lastX = pos.x;
@@ -528,7 +528,7 @@ function startDrawing(e) {
 }
 
 function draw(e) {
-    if (!isDrawing || isCropping || currentTool === '' || currentShape !== '' || currentTool === 'select' || currentTool === 'fill') return;
+    if (!isDrawing || isCropping || currentTool === '' || currentShape !== '' || currentTool === 'select' || currentTool === 'fill' || currentTool === 'move' || isDraggingElement) return;
     e.preventDefault();
     const pos = getPosition(e);
     
@@ -613,7 +613,9 @@ function stopDrawing(e) {
 }
 
 canvasContainer.addEventListener('mousedown', (e) => {
-    isDrawing = false; // Reset drawing state for all mouse interactions
+    isDrawing = false; 
+    isDraggingElement = false;
+
     if (currentTool === 'move') {
         const pos = getPosition(e);
         const idx = findElementAtPoint(pos.x, pos.y);
@@ -623,27 +625,17 @@ canvasContainer.addEventListener('mousedown', (e) => {
             elementDragStartX = pos.x;
             elementDragStartY = pos.y;
             canvasContainer.style.cursor = 'grabbing';
-            redrawWithPanAndZoom(); // Redraw to show selection if any
-
+            redrawWithPanAndZoom();
         } else if (selectedElement !== null) {
-            isDraggingElement = true; elementDragStartX = pos.x; elementDragStartY = pos.y;
-        }
-    } else if (currentTool === 'select') {
-        isDrawing = false; // Ensure drawing is off
-        const pos = getPosition(e);
-        const idx = findElementAtPoint(pos.x, pos.y);
-        if (idx >= 0) {
-            if (selectedElement !== idx) {
-                selectedElement = idx;
-                redrawWithPanAndZoom(); // Redraw to show new selection
-            }
             isDraggingElement = true;
             elementDragStartX = pos.x;
             elementDragStartY = pos.y;
-        } else {
-            selectedElement = null;
-            redrawWithPanAndZoom();
+            canvasContainer.style.cursor = 'grabbing';
         }
+    } else if (currentTool === 'select') {
+        const pos = getPosition(e);
+        const idx = findElementAtPoint(pos.x, pos.y);
+        handleSelection(idx, pos);
     } else if (currentTool === 'fill') {
         const pos = getPosition(e);
         const idx = findElementAtPoint(pos.x, pos.y);
@@ -658,9 +650,25 @@ canvasContainer.addEventListener('mousedown', (e) => {
         shapeStartY = pos.y;
         isDrawingShape = true;
     }
-    // For drawing tools (pencil, pen, brush, eraser)
-    else if (currentTool !== '' && currentTool !== 'fill' && currentTool !== 'select' && currentTool !== 'move') startDrawing(e);
+    else if (currentTool !== '' && !['fill', 'select', 'move'].includes(currentTool) && !isDraggingElement) {
+        startDrawing(e);
+    }
 });
+
+function handleSelection(idx, pos) {
+    if (idx >= 0) {
+        if (selectedElement !== idx) {
+            selectedElement = idx;
+            redrawWithPanAndZoom();
+        }
+        isDraggingElement = true;
+        elementDragStartX = pos.x;
+        elementDragStartY = pos.y;
+    } else {
+        selectedElement = null;
+        redrawWithPanAndZoom();
+    }
+}
 
 canvasContainer.addEventListener('mousemove', (e) => {
     if (isDraggingElement && selectedElement !== null) {
@@ -670,7 +678,7 @@ canvasContainer.addEventListener('mousemove', (e) => {
         moveElement(selectedElement, dx, dy);
         elementDragStartX = pos.x;
         elementDragStartY = pos.y;
-    } else if (isDrawing && !isCropping && currentTool !== 'select' && currentTool !== 'move' && currentTool !== 'fill') { // Freehand drawing
+    } else if (isDrawing && !isCropping && !['select', 'move', 'fill'].includes(currentTool) && !isDraggingElement) {
         draw(e);
     } else if (isDrawingShape) {
         const pos = getPosition(e);
@@ -693,9 +701,19 @@ canvasContainer.addEventListener('touchstart', (e) => {
         initialPanY = currentPanY;
 
         if (currentTool === 'move') {
-            isDrawing = false; // Not drawing, but preparing for pan
-            isDraggingElement = false; // Reset dragging for touch pan
-            selectedElement = null; // Deselect for touch pan
+            isDrawing = false;
+            const idx = findElementAtPoint(pos.x, pos.y);
+            if (idx >= 0) {
+                selectedElement = idx;
+                isDraggingElement = true;
+                elementDragStartX = pos.x;
+                elementDragStartY = pos.y;
+                redrawWithPanAndZoom();
+            } else if (selectedElement !== null) {
+                isDraggingElement = true;
+                elementDragStartX = pos.x;
+                elementDragStartY = pos.y;
+            }
         } else if (currentTool === 'select') {
             isDrawing = false;
             const idx = findElementAtPoint(pos.x, pos.y);
@@ -736,21 +754,21 @@ canvasContainer.addEventListener('touchmove', (e) => {
         currentZoom = Math.max(minZoom, Math.min(maxZoom, currentZoom)); // Clamp zoom
         redrawWithPanAndZoom();
     } else if (e.touches.length === 1) {
-        if (currentTool === 'move') {
-            const dx = e.touches[0].clientX - touchStartX;
-            const dy = e.touches[0].clientY - touchStartY;
-            currentPanX = initialPanX + dx;
-            currentPanY = initialPanY + dy;
-            redrawWithPanAndZoom();
-        } else if (isDrawing && !isCropping && currentTool !== 'select' && currentTool !== 'move' && currentTool !== 'fill') { // Freehand drawing
-            draw(e.touches[0]);
-        } else if (isDraggingElement && selectedElement !== null) {
+        if (isDraggingElement && selectedElement !== null && (currentTool === 'move' || currentTool === 'select')) {
             const pos = getPosition(e.touches[0]);
             const dx = pos.x - elementDragStartX;
             const dy = pos.y - elementDragStartY;
             moveElement(selectedElement, dx, dy);
             elementDragStartX = pos.x;
             elementDragStartY = pos.y;
+        } else if (currentTool === 'move' && !isDraggingElement) {
+            const dx = e.touches[0].clientX - touchStartX;
+            const dy = e.touches[0].clientY - touchStartY;
+            currentPanX = initialPanX + dx;
+            currentPanY = initialPanY + dy;
+            redrawWithPanAndZoom();
+        } else if (isDrawing && !isCropping && currentTool !== 'select' && currentTool !== 'move' && currentTool !== 'fill' && !isDraggingElement) {
+            draw(e.touches[0]);
         } else if (isDrawingShape) {
             const pos = getPosition(e.touches[0]);
             redrawWithPanAndZoom(); // Clear canvas
