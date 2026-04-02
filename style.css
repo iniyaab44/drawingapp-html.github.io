@@ -1,0 +1,459 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(45deg, #1a1a2e 25%, #16213e 25%, #16213e 50%, #1a1a2e 50%, #1a1a2e 75%, #16213e 75%);
+    background-size: 40px 40px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+}
+
+h1 {
+    color: #eee;
+    margin-bottom: 15px;
+    font-size: 22px;
+}
+
+.main-container {
+    display: flex;
+    gap: 15px;
+}
+
+.left-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    background: #16213e;
+    padding: 15px 12px;
+    border-radius: 12px;
+    width: 120px;
+}
+
+.section-label {
+    color: #aaa;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-align: center;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.shape-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.shape-btn {
+    width: 32px;
+    height: 32px;
+    border: 2px solid #0f3460;
+    border-radius: 8px;
+    background: #1a1a2e;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.shape-btn:hover {
+    border-color: #e94560;
+}
+
+.shape-btn.active {
+    background: #e94560;
+    border-color: #e94560;
+}
+
+.shape-btn.active svg path,
+.shape-btn.active svg rect,
+.shape-btn.active svg circle {
+    filter: brightness(0) invert(1);
+}
+
+.dropdown-menus {
+    position: relative;
+}
+
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    left: 115px;
+    top: 0;
+    background: #16213e;
+    border-radius: 8px;
+    padding: 8px;
+    gap: 4px;
+    flex-direction: column;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+    z-index: 100;
+    min-width: 110px;
+}
+
+.dropdown-menu.show {
+    display: flex;
+}
+
+.dropdown-item {
+    padding: 8px 12px;
+    background: #1a1a2e;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    color: #eee;
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+    transition: all 0.2s;
+}
+
+.dropdown-item:hover {
+    background: #e94560;
+    border-color: #e94560;
+}
+
+.tool-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+}
+
+.tool-btn {
+    width: 32px;
+    height: 32px;
+    border: 2px solid #0f3460;
+    border-radius: 8px;
+    background: #1a1a2e;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.tool-btn:hover {
+    border-color: #e94560;
+}
+
+.tool-btn.active {
+    background: #e94560;
+    border-color: #e94560;
+}
+
+.tool-btn.active svg path,
+.tool-btn.active svg rect,
+.tool-btn.active svg circle {
+    filter: brightness(0) invert(1);
+}
+
+.option-section {
+    text-align: center;
+}
+
+.option-section input[type="range"] {
+    width: 95px;
+    accent-color: #e94560;
+}
+
+.value-display {
+    color: #e94560;
+    font-weight: bold;
+    font-size: 12px;
+    display: block;
+    margin-top: 4px;
+}
+
+.color-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+}
+
+.color-preset {
+    width: 34px;
+    height: 34px;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    justify-self: center;
+}
+
+.color-preset:hover {
+    transform: scale(1.1);
+    border-color: #e94560;
+}
+
+.color-preset.active {
+    border-color: #fff;
+    box-shadow: 0 0 5px #e94560;
+}
+
+.action-section {
+    margin-top: auto;
+}
+
+.action-btn {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #0f3460;
+    border-radius: 8px;
+    background: #1a1a2e;
+    color: #eee;
+    cursor: pointer;
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    border-color: #e74c3c;
+}
+
+.canvas-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.canvas-wrapper {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+}
+
+.canvas-container {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    cursor: crosshair;
+    overflow: hidden;
+}
+
+canvas {
+    display: block;
+    border-radius: 12px;
+    background: transparent;
+}
+
+.bottom-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #16213e;
+    padding: 10px 15px;
+    border-radius: 10px;
+    gap: 15px;
+}
+
+.history-btns, .zoom-btns {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.icon-btn {
+    width: 44px;
+    height: 44px;
+    border: 2px solid #0f3460;
+    border-radius: 8px;
+    background: #1a1a2e;
+    color: #eee;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.icon-btn:hover {
+    border-color: #e94560;
+    background: #e94560;
+    color: #fff;
+}
+
+.zoom-display {
+    color: #eee;
+    font-size: 12px;
+    min-width: 40px;
+    text-align: center;
+}
+
+.export-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.export-section input[type="number"] {
+    width: 55px;
+    padding: 5px;
+    border: 2px solid #0f3460;
+    border-radius: 5px;
+    background: #1a1a2e;
+    color: #eee;
+    font-size: 11px;
+    text-align: center;
+}
+
+.export-section input[type="number"]:focus {
+    outline: none;
+    border-color: #e94560;
+}
+
+.separator {
+    color: #eee;
+}
+
+.export-section select {
+    padding: 5px 8px;
+    border: 2px solid #0f3460;
+    border-radius: 5px;
+    background: #1a1a2e;
+    color: #eee;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.download-btn {
+    width: 48px;
+    height: 48px;
+    border: 2px solid #0f3460;
+    border-radius: 8px;
+    background: #1a1a2e;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.download-btn:hover {
+    border-color: #27ae60;
+    background: #27ae60;
+}
+
+.download-btn:hover svg path {
+    stroke: #fff;
+}
+
+.cursor-preview {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1000;
+    display: none;
+}
+
+.cursor-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.4));
+}
+
+.tooltip {
+    position: fixed;
+    background: #e94560;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    pointer-events: none;
+    z-index: 2000;
+    display: none;
+    white-space: nowrap;
+}
+
+.crop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 3000;
+    display: none;
+}
+
+.crop-overlay.active {
+    display: block;
+}
+
+.crop-box {
+    position: absolute;
+    border: 2px dashed #fff;
+    background: transparent;
+    cursor: move;
+}
+
+.crop-info {
+    position: absolute;
+    top: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #e94560;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.crop-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #fff;
+    border: 2px solid #e94560;
+    border-radius: 2px;
+}
+
+.crop-handle.nw { top: -4px; left: -4px; cursor: nw-resize; }
+.crop-handle.ne { top: -4px; right: -4px; cursor: ne-resize; }
+.crop-handle.sw { bottom: -4px; left: -4px; cursor: sw-resize; }
+.crop-handle.se { bottom: -4px; right: -4px; cursor: se-resize; }
+
+.crop-actions {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 3001;
+}
+
+.crop-btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.crop-btn.cancel {
+    background: #e74c3c;
+    color: white;
+}
+
+.crop-btn.apply {
+    background: #27ae60;
+    color: white;
+}
