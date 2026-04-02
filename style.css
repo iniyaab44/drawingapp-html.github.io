@@ -19,11 +19,15 @@ h1 {
     color: #eee;
     margin-bottom: 15px;
     font-size: 22px;
+    text-align: center;
 }
 
 .main-container {
     display: flex;
     gap: 15px;
+    width: 100%;
+    max-width: 1200px;
+    justify-content: center;
 }
 
 .left-sidebar {
@@ -123,8 +127,9 @@ h1 {
 
 .tool-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 5px;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, auto);
+    gap: 10px;
 }
 
 .tool-btn {
@@ -240,12 +245,16 @@ h1 {
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
     cursor: crosshair;
     overflow: hidden;
+    width: 100%;
+    max-width: 900px;
 }
 
 canvas {
     display: block;
     border-radius: 12px;
     background: transparent;
+    max-width: 100%;
+    height: auto;
 }
 
 .bottom-bar {
@@ -456,4 +465,59 @@ canvas {
 .crop-btn.apply {
     background: #27ae60;
     color: white;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1024px) {
+    .main-container {
+        flex-direction: column-reverse; /* Tools under canvas */
+        align-items: center;
+    }
+
+    .left-sidebar {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 20px;
+        padding: 20px;
+    }
+
+    .shape-section, .tool-section, .option-section, .color-section, .action-section {
+        flex: 1 1 auto;
+        min-width: 140px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .dropdown-menu {
+        left: 50%;
+        transform: translateX(-50%);
+        top: auto;
+        bottom: 100%;
+        margin-bottom: 10px;
+    }
+
+    .canvas-section {
+        width: 100%;
+        align-items: center;
+    }
+}
+
+@media (max-width: 600px) {
+    .bottom-bar {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .export-section {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    /* Hide custom cursor on touch devices to avoid interference */
+    .cursor-preview {
+        display: none !important;
+    }
 }
